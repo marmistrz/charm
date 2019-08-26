@@ -52,6 +52,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 #include "hrctimer.h"
 #ifndef __STDC_FORMAT_MACROS
 # define __STDC_FORMAT_MACROS
@@ -164,6 +165,7 @@ void EmergencyExit(void);
 
 //int cur_restart_phase = 1;      /* checkpointing/restarting phase counter */
 CpvDeclare(int,_curRestartPhase);
+CpvDeclare(std::vector<NcpyOperationInfo *>, newZCPupGets);
 static int CsdLocalMax = CSD_LOCAL_MAX_DEFAULT;
 
 int CharmLibInterOperate = 0;
@@ -3773,6 +3775,7 @@ void ConverseCommonInit(char **argv)
   CpvAccess(interopExitFlag) = 0;
 
   CpvInitialize(int,_curRestartPhase);
+  CpvInitialize(std::vector<NcpyOperationInfo *>, newZCPupGets);
   CpvAccess(_curRestartPhase)=1;
   CmiArgInit(argv);
   CmiMemoryInit(argv);
