@@ -299,6 +299,7 @@ void zcPupDone(void *ref) {
 #endif
 
   srcInfo->deallocate((void *)srcInfo->src.ptr);
+  delete srcInfo;
 }
 
 void zcPupHandler(ncpyHandlerMsg *msg) {
