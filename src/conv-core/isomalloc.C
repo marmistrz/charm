@@ -25,7 +25,7 @@ Substantially rewritten by Evan Ramos in 2019.
 #include "pup.h"
 #include "pup_stl.h"
 
-#define ISOMALLOC_DEBUG 0
+#define ISOMALLOC_DEBUG 1
 
 #if ISOMALLOC_DEBUG
 #define DEBUG_PRINT(...) CmiPrintf(__VA_ARGS__)
@@ -33,7 +33,7 @@ Substantially rewritten by Evan Ramos in 2019.
 #define DEBUG_PRINT(...)
 #endif
 
-#define ISOMEMPOOL_DEBUG 0
+#define ISOMEMPOOL_DEBUG 1
 
 #if ISOMEMPOOL_DEBUG
 #define IMP_DBG(...) CmiPrintf(__VA_ARGS__)
@@ -1736,19 +1736,24 @@ void CmiIsomallocContext::pup(PUP::er & p)
 
   const size_t totalsize = allocated_extent - start;
 
-  if (p.isUnpacking())
-  {
-    void * const mapped = map_global_memory(start, totalsize);
-    if (mapped == nullptr)
-      CmiAbort("Failed to unpack CmiIsomallocContext!");
-  }
+  uint8_t * localstart = start;
 
-  p(start, totalsize);
+  p.pup_buffer(localstart, totalsize,
+               [localstart, totalsize](size_t) -> void *
+               {
+                 void * const mapped = map_global_memory(localstart, totalsize);
+                 if (mapped == nullptr)
+                   CmiAbort("Failed to unpack CmiIsomallocContext!");
+                 return mapped;
+               },
+               [localstart, totalsize](void *)
+               {
+                 unmap_global_memory(localstart, totalsize);
+               }
+               );
 
   if (p.isDeleting())
-  {
-    clear();
-  }
+    allocated_extent = start; // the context no longer owns the mmapped region
 }
 
 /*
