@@ -1162,10 +1162,6 @@ struct CmiIsomallocContext
       }
     };
 
-    Node * lookup_region(size_t, size_t, size_t);
-    void insert(Node *);
-    void remove(Node *);
-
     void pup(PUP::er & p)
     {
       pup_raw_pointer(p, root);
@@ -1183,30 +1179,384 @@ struct CmiIsomallocContext
       return n == nullptr ? BLACK : n->color();
     }
 
-    void replace_node(Node * oldn, Node * newn);
-    void rotate_left(Node * n);
-    void rotate_right(Node * n);
+    /*
+     * Red-black tree implementation sourced from:
+     * https://web.archive.org/web/20151002014345/http://en.literateprograms.org:80/Special:Downloadcode/Red-black_tree_(C)
+     *
+     * Its authors have released all rights to it and placed it
+     * in the public domain under the Creative Commons CC0 1.0 waiver.
+     * https://creativecommons.org/publicdomain/zero/1.0/
+     */
 
-    void insert_case1(Node * n);
-    void insert_case2(Node * n);
-    void insert_case3(Node * n);
-    void insert_case4(Node * n);
-    void insert_case5(Node * n);
+  public:
+    Node * lookup_region(size_t size, size_t alignment, size_t alignment_offset)
+    {
+      Node * n = this->root;
+      Node * result = nullptr;
+      while (n != nullptr)
+      {
+        signed long long comp_result = get_alignment_filler(n->ptr() + alignment_offset, alignment) + size - n->size();
+        if (comp_result == 0)
+        {
+          return n;
+        }
+        else if (comp_result < 0)
+        {
+          result = n;
+          n = n->left();
+        }
+        else
+        {
+          CmiAssert(comp_result > 0);
+          n = n->right();
+        }
+      }
+      return result;
+    }
 
-    void delete_case1(Node * n);
-    void delete_case2(Node * n);
-    void delete_case3(Node * n);
-    void delete_case4(Node * n);
-    void delete_case5(Node * n);
-    void delete_case6(Node * n);
+  private:
+    void replace_node(Node * oldn, Node * newn)
+    {
+      Node * parent = oldn->parent();
+      if (oldn->isRoot())
+      {
+        this->root = newn;
+      }
+      else
+      {
+        if (oldn == parent->left())
+          parent->leftField = newn;
+        else
+          parent->rightField = newn;
+      }
+      if (newn != nullptr)
+      {
+        newn->parentField = oldn->parent();
+      }
+    }
+
+    void rotate_left(Node * n)
+    {
+      Node * r = n->right();
+      replace_node(n, r);
+      n->rightField = r->left();
+      if (r->left() != nullptr)
+      {
+        r->left()->parentField = n;
+      }
+      r->leftField = n;
+      n->parentField = r;
+    }
+    void rotate_right(Node * n)
+    {
+      Node * L = n->left();
+      replace_node(n, L);
+      n->leftField = L->right();
+      if (L->right() != nullptr)
+      {
+        L->right()->parentField = n;
+      }
+      L->rightField = n;
+      n->parentField = L;
+    }
+
+    void insert_case1(Node * n)
+    {
+      if (n->isRoot())
+        n->setColor(BLACK);
+      else
+        insert_case2(n);
+    }
+    void insert_case2(Node * n)
+    {
+      if (n->parent()->color() == BLACK)
+        return; /* Tree is still valid */
+      else
+        insert_case3(n);
+    }
+    void insert_case3(Node * n)
+    {
+      if (node_color(n->parent_sibling()) == RED)
+      {
+        n->parent()->setColor(BLACK);
+        n->parent_sibling()->setColor(BLACK);
+        n->grandparent()->setColor(RED);
+        insert_case1(n->grandparent());
+      }
+      else
+      {
+        insert_case4(n);
+      }
+    }
+    void insert_case4(Node * n)
+    {
+      Node * parent = n->parent();
+      if (n == parent->right() && parent == n->grandparent()->left())
+      {
+        rotate_left(parent);
+        n = n->left();
+      }
+      else if (n == parent->left() && parent == n->grandparent()->right())
+      {
+        rotate_right(parent);
+        n = n->right();
+      }
+      insert_case5(n);
+    }
+    void insert_case5(Node * n)
+    {
+      Node * parent = n->parent();
+      parent->setColor(BLACK);
+      n->grandparent()->setColor(RED);
+      if (n == parent->left() && parent == n->grandparent()->left())
+      {
+        rotate_right(n->grandparent());
+      }
+      else
+      {
+        CmiAssert(n == parent->right() && parent == n->grandparent()->right());
+        rotate_left(n->grandparent());
+      }
+    }
+
+  public:
+    void insert(Node * inserted_node)
+    {
+      if (this->root == nullptr)
+      {
+        this->root = inserted_node;
+        inserted_node->parentField = nullptr;
+        inserted_node->setColor(BLACK);
+      }
+      else
+      {
+        Node * n = this->root;
+        while (1)
+        {
+          signed long long comp_result = inserted_node->key() - n->key();
+          if (comp_result < 0)
+          {
+            if (n->left() == nullptr)
+            {
+              n->leftField = inserted_node;
+              break;
+            }
+            else
+            {
+              n = n->left();
+            }
+          }
+          else
+          {
+            if (n->right() == nullptr)
+            {
+              n->rightField = inserted_node;
+              break;
+            }
+            else
+            {
+              n = n->right();
+            }
+          }
+        }
+        inserted_node->parentField = n;
+        insert_case2(inserted_node);
+      }
 
 #ifdef VERIFY_RBTREE
-    void verify_properties();
-    static void verify_property_1(Node * n);
-    static void verify_property_2(Node * root);
-    static void verify_property_4(Node * n);
-    static void verify_property_5_helper(Node * n, int black_count, int * path_black_count);
-    static void verify_property_5(Node * root);
+      this->verify_properties();
+#endif
+    }
+
+  private:
+    void delete_case1(Node * n)
+    {
+      if (n->isRoot())
+        return;
+      else
+        delete_case2(n);
+    }
+    void delete_case2(Node * n)
+    {
+      if (node_color(n->sibling()) == RED)
+      {
+        Node * parent = n->parent();
+        parent->setColor(RED);
+        n->sibling()->setColor(BLACK);
+        if (n == parent->left())
+          rotate_left(parent);
+        else
+          rotate_right(parent);
+      }
+      delete_case3(n);
+    }
+    void delete_case3(Node * n)
+    {
+      Node * parent = n->parent();
+      if (parent->color() == BLACK && node_color(n->sibling()) == BLACK &&
+          node_color(n->sibling()->left()) == BLACK && node_color(n->sibling()->right()) == BLACK)
+      {
+        n->sibling()->setColor(RED);
+        delete_case1(parent);
+      }
+      else
+        delete_case4(n);
+    }
+    void delete_case4(Node * n)
+    {
+      Node * parent = n->parent();
+      if (parent->color() == RED && node_color(n->sibling()) == BLACK &&
+          node_color(n->sibling()->left()) == BLACK && node_color(n->sibling()->right()) == BLACK)
+      {
+        n->sibling()->setColor(RED);
+        parent->setColor(BLACK);
+      }
+      else
+        delete_case5(n);
+    }
+    void delete_case5(Node * n)
+    {
+      Node * parent = n->parent();
+      if (n == parent->left() && node_color(n->sibling()) == BLACK &&
+          node_color(n->sibling()->left()) == RED && node_color(n->sibling()->right()) == BLACK)
+      {
+        n->sibling()->setColor(RED);
+        n->sibling()->left()->setColor(BLACK);
+        rotate_right(n->sibling());
+      }
+      else if (n == parent->right() && node_color(n->sibling()) == BLACK &&
+               node_color(n->sibling()->right()) == RED && node_color(n->sibling()->left()) == BLACK)
+      {
+        n->sibling()->setColor(RED);
+        n->sibling()->right()->setColor(BLACK);
+        rotate_left(n->sibling());
+      }
+      delete_case6(n);
+    }
+    void delete_case6(Node * n)
+    {
+      Node * parent = n->parent();
+      n->sibling()->setColor(parent->color());
+      parent->setColor(BLACK);
+      if (n == parent->left())
+      {
+        CmiAssert(node_color(n->sibling()->right()) == RED);
+        n->sibling()->right()->setColor(BLACK);
+        rotate_left(parent);
+      }
+      else
+      {
+        CmiAssert(node_color(n->sibling()->left()) == RED);
+        n->sibling()->left()->setColor(BLACK);
+        rotate_right(parent);
+      }
+    }
+
+  public:
+    void remove(Node * n)
+    {
+      CmiAssert(n->color() == BLACK || n->color() == RED);
+
+      auto remove_internal = [this](Node * n)
+      {
+        CmiAssert(n->left() == nullptr || n->right() == nullptr);
+
+        Node * child = n->right() == nullptr ? n->left() : n->right();
+        if (node_color(n) == BLACK)
+        {
+          n->setColor(node_color(child));
+          delete_case1(n);
+        }
+        replace_node(n, child);
+        if (n->isRoot() && child != nullptr)  // root should be black
+          child->setColor(BLACK);
+
+#ifdef VERIFY_RBTREE
+        this->verify_properties();
+#endif
+      };
+
+      if (n->left() != nullptr && n->right() != nullptr)
+      {
+        /* Copy key/value from predecessor and then delete it instead */
+        Node * pred = n->left()->maximum_node();
+        remove_internal(pred);
+        replace_node(n, pred);
+        pred->setColor(n->color());
+        pred->leftField = n->leftField;
+        pred->rightField = n->rightField;
+        if (pred->left())
+          pred->left()->parentField = pred;
+        if (pred->right())
+          pred->right()->parentField = pred;
+      }
+      else
+      {
+        remove_internal(n);
+      }
+    }
+
+#ifdef VERIFY_RBTREE
+  private:
+    void verify_property_1(Node * n)
+    {
+      CmiAssert(node_color(n) == RED || node_color(n) == BLACK);
+      if (n == nullptr) return;
+      verify_property_1(n->left());
+      verify_property_1(n->right());
+    }
+    void verify_property_2(Node * root)
+    {
+      CmiAssert(node_color(root) == BLACK);
+    }
+    void verify_property_4(Node * n)
+    {
+      if (node_color(n) == RED)
+      {
+        CmiAssert(node_color(n->left()) == BLACK);
+        CmiAssert(node_color(n->right()) == BLACK);
+        CmiAssert(n->parent()->color() == BLACK);
+      }
+      if (n == nullptr) return;
+      verify_property_4(n->left());
+      verify_property_4(n->right());
+    }
+    void verify_property_5_helper(Node * n, int black_count, int * path_black_count)
+    {
+      if (node_color(n) == BLACK)
+      {
+        black_count++;
+      }
+      if (n == nullptr)
+      {
+        if (*path_black_count == -1)
+        {
+          *path_black_count = black_count;
+        }
+        else
+        {
+          CmiAssert(black_count == *path_black_count);
+        }
+        return;
+      }
+      verify_property_5_helper(n->left(), black_count, path_black_count);
+      verify_property_5_helper(n->right(), black_count, path_black_count);
+    }
+    void verify_property_5(Node * root)
+    {
+      int black_count_path = -1;
+      verify_property_5_helper(root, 0, &black_count_path);
+    }
+
+  protected:
+    void verify_properties()
+    {
+      verify_property_1(this->root);
+      verify_property_2(this->root);
+      /* Property 3 is implicit */
+      verify_property_4(this->root);
+      verify_property_5(this->root);
+    }
 #endif
   };
 
@@ -1750,379 +2100,6 @@ void CmiIsomallocContext::pup(PUP::er & p)
     clear();
   }
 }
-
-/*
-Red-black tree code sourced from:
-https://web.archive.org/web/20151002014345/http://en.literateprograms.org:80/Special:Downloadcode/Red-black_tree_(C)
-
-Its authors have released all rights to it and placed it
-in the public domain under the Creative Commons CC0 1.0 waiver.
-https://creativecommons.org/publicdomain/zero/1.0/
-*/
-
-auto CmiIsomallocContext::RBTree::lookup_region(size_t size, size_t alignment, size_t alignment_offset) -> Node *
-{
-  Node * n = this->root;
-  Node * result = nullptr;
-  while (n != nullptr)
-  {
-    signed long long comp_result = get_alignment_filler(n->ptr() + alignment_offset, alignment) + size - n->size();
-    if (comp_result == 0)
-    {
-      return n;
-    }
-    else if (comp_result < 0)
-    {
-      result = n;
-      n = n->left();
-    }
-    else
-    {
-      CmiAssert(comp_result > 0);
-      n = n->right();
-    }
-  }
-  return result;
-}
-
-void CmiIsomallocContext::RBTree::replace_node(Node * oldn, Node * newn)
-{
-  Node * parent = oldn->parent();
-  if (oldn->isRoot())
-  {
-    this->root = newn;
-  }
-  else
-  {
-    if (oldn == parent->left())
-      parent->leftField = newn;
-    else
-      parent->rightField = newn;
-  }
-  if (newn != nullptr)
-  {
-    newn->parentField = oldn->parent();
-  }
-}
-
-void CmiIsomallocContext::RBTree::rotate_left(Node * n)
-{
-  Node * r = n->right();
-  replace_node(n, r);
-  n->rightField = r->left();
-  if (r->left() != nullptr)
-  {
-    r->left()->parentField = n;
-  }
-  r->leftField = n;
-  n->parentField = r;
-}
-void CmiIsomallocContext::RBTree::rotate_right(Node * n)
-{
-  Node * L = n->left();
-  replace_node(n, L);
-  n->leftField = L->right();
-  if (L->right() != nullptr)
-  {
-    L->right()->parentField = n;
-  }
-  L->rightField = n;
-  n->parentField = L;
-}
-
-void CmiIsomallocContext::RBTree::insert_case1(Node * n)
-{
-  if (n->isRoot())
-    n->setColor(BLACK);
-  else
-    insert_case2(n);
-}
-void CmiIsomallocContext::RBTree::insert_case2(Node * n)
-{
-  if (n->parent()->color() == BLACK)
-    return; /* Tree is still valid */
-  else
-    insert_case3(n);
-}
-void CmiIsomallocContext::RBTree::insert_case3(Node * n)
-{
-  if (node_color(n->parent_sibling()) == RED)
-  {
-    n->parent()->setColor(BLACK);
-    n->parent_sibling()->setColor(BLACK);
-    n->grandparent()->setColor(RED);
-    insert_case1(n->grandparent());
-  }
-  else
-  {
-    insert_case4(n);
-  }
-}
-void CmiIsomallocContext::RBTree::insert_case4(Node * n)
-{
-  Node * parent = n->parent();
-  if (n == parent->right() && parent == n->grandparent()->left())
-  {
-    rotate_left(parent);
-    n = n->left();
-  }
-  else if (n == parent->left() && parent == n->grandparent()->right())
-  {
-    rotate_right(parent);
-    n = n->right();
-  }
-  insert_case5(n);
-}
-void CmiIsomallocContext::RBTree::insert_case5(Node * n)
-{
-  Node * parent = n->parent();
-  parent->setColor(BLACK);
-  n->grandparent()->setColor(RED);
-  if (n == parent->left() && parent == n->grandparent()->left())
-  {
-    rotate_right(n->grandparent());
-  }
-  else
-  {
-    CmiAssert(n == parent->right() && parent == n->grandparent()->right());
-    rotate_left(n->grandparent());
-  }
-}
-
-void CmiIsomallocContext::RBTree::insert(Node * inserted_node)
-{
-  if (this->root == nullptr)
-  {
-    this->root = inserted_node;
-    inserted_node->parentField = nullptr;
-    inserted_node->setColor(BLACK);
-  }
-  else
-  {
-    Node * n = this->root;
-    while (1)
-    {
-      signed long long comp_result = inserted_node->key() - n->key();
-      if (comp_result < 0)
-      {
-        if (n->left() == nullptr)
-        {
-          n->leftField = inserted_node;
-          break;
-        }
-        else
-        {
-          n = n->left();
-        }
-      }
-      else
-      {
-        if (n->right() == nullptr)
-        {
-          n->rightField = inserted_node;
-          break;
-        }
-        else
-        {
-          n = n->right();
-        }
-      }
-    }
-    inserted_node->parentField = n;
-    insert_case2(inserted_node);
-  }
-
-#ifdef VERIFY_RBTREE
-  this->verify_properties();
-#endif
-}
-
-void CmiIsomallocContext::RBTree::delete_case1(Node * n)
-{
-  if (n->isRoot())
-    return;
-  else
-    delete_case2(n);
-}
-void CmiIsomallocContext::RBTree::delete_case2(Node * n)
-{
-  if (node_color(n->sibling()) == RED)
-  {
-    Node * parent = n->parent();
-    parent->setColor(RED);
-    n->sibling()->setColor(BLACK);
-    if (n == parent->left())
-      rotate_left(parent);
-    else
-      rotate_right(parent);
-  }
-  delete_case3(n);
-}
-void CmiIsomallocContext::RBTree::delete_case3(Node * n)
-{
-  Node * parent = n->parent();
-  if (parent->color() == BLACK && node_color(n->sibling()) == BLACK &&
-      node_color(n->sibling()->left()) == BLACK && node_color(n->sibling()->right()) == BLACK)
-  {
-    n->sibling()->setColor(RED);
-    delete_case1(parent);
-  }
-  else
-    delete_case4(n);
-}
-void CmiIsomallocContext::RBTree::delete_case4(Node * n)
-{
-  Node * parent = n->parent();
-  if (parent->color() == RED && node_color(n->sibling()) == BLACK &&
-      node_color(n->sibling()->left()) == BLACK && node_color(n->sibling()->right()) == BLACK)
-  {
-    n->sibling()->setColor(RED);
-    parent->setColor(BLACK);
-  }
-  else
-    delete_case5(n);
-}
-void CmiIsomallocContext::RBTree::delete_case5(Node * n)
-{
-  Node * parent = n->parent();
-  if (n == parent->left() && node_color(n->sibling()) == BLACK &&
-      node_color(n->sibling()->left()) == RED && node_color(n->sibling()->right()) == BLACK)
-  {
-    n->sibling()->setColor(RED);
-    n->sibling()->left()->setColor(BLACK);
-    rotate_right(n->sibling());
-  }
-  else if (n == parent->right() && node_color(n->sibling()) == BLACK &&
-           node_color(n->sibling()->right()) == RED && node_color(n->sibling()->left()) == BLACK)
-  {
-    n->sibling()->setColor(RED);
-    n->sibling()->right()->setColor(BLACK);
-    rotate_left(n->sibling());
-  }
-  delete_case6(n);
-}
-void CmiIsomallocContext::RBTree::delete_case6(Node * n)
-{
-  Node * parent = n->parent();
-  n->sibling()->setColor(parent->color());
-  parent->setColor(BLACK);
-  if (n == parent->left())
-  {
-    CmiAssert(node_color(n->sibling()->right()) == RED);
-    n->sibling()->right()->setColor(BLACK);
-    rotate_left(parent);
-  }
-  else
-  {
-    CmiAssert(node_color(n->sibling()->left()) == RED);
-    n->sibling()->left()->setColor(BLACK);
-    rotate_right(parent);
-  }
-}
-
-void CmiIsomallocContext::RBTree::remove(Node * n)
-{
-  CmiAssert(n->color() == BLACK || n->color() == RED);
-
-  auto remove_internal = [this](Node * n)
-  {
-    CmiAssert(n->left() == nullptr || n->right() == nullptr);
-
-    Node * child = n->right() == nullptr ? n->left() : n->right();
-    if (node_color(n) == BLACK)
-    {
-      n->setColor(node_color(child));
-      delete_case1(n);
-    }
-    replace_node(n, child);
-    if (n->isRoot() && child != nullptr)  // root should be black
-      child->setColor(BLACK);
-
-#ifdef VERIFY_RBTREE
-    this->verify_properties();
-#endif
-  };
-
-  if (n->left() != nullptr && n->right() != nullptr)
-  {
-    /* Copy key/value from predecessor and then delete it instead */
-    Node * pred = n->left()->maximum_node();
-    remove_internal(pred);
-    replace_node(n, pred);
-    pred->setColor(n->color());
-    pred->leftField = n->leftField;
-    pred->rightField = n->rightField;
-    if (pred->left())
-      pred->left()->parentField = pred;
-    if (pred->right())
-      pred->right()->parentField = pred;
-  }
-  else
-  {
-    remove_internal(n);
-  }
-}
-
-#ifdef VERIFY_RBTREE
-void CmiIsomallocContext::RBTree::verify_property_1(Node * n)
-{
-  CmiAssert(node_color(n) == RED || node_color(n) == BLACK);
-  if (n == nullptr) return;
-  verify_property_1(n->left());
-  verify_property_1(n->right());
-}
-void CmiIsomallocContext::RBTree::verify_property_2(Node * root)
-{
-  CmiAssert(node_color(root) == BLACK);
-}
-void CmiIsomallocContext::RBTree::verify_property_4(Node * n)
-{
-  if (node_color(n) == RED)
-  {
-    CmiAssert(node_color(n->left()) == BLACK);
-    CmiAssert(node_color(n->right()) == BLACK);
-    CmiAssert(n->parent()->color() == BLACK);
-  }
-  if (n == nullptr) return;
-  verify_property_4(n->left());
-  verify_property_4(n->right());
-}
-void CmiIsomallocContext::RBTree::verify_property_5_helper(Node * n, int black_count, int * path_black_count)
-{
-  if (node_color(n) == BLACK)
-  {
-    black_count++;
-  }
-  if (n == nullptr)
-  {
-    if (*path_black_count == -1)
-    {
-      *path_black_count = black_count;
-    }
-    else
-    {
-      CmiAssert(black_count == *path_black_count);
-    }
-    return;
-  }
-  verify_property_5_helper(n->left(), black_count, path_black_count);
-  verify_property_5_helper(n->right(), black_count, path_black_count);
-}
-void CmiIsomallocContext::RBTree::verify_property_5(Node * root)
-{
-  int black_count_path = -1;
-  verify_property_5_helper(root, 0, &black_count_path);
-}
-
-void CmiIsomallocContext::RBTree::verify_properties()
-{
-  verify_property_1(this->root);
-  verify_property_2(this->root);
-  /* Property 3 is implicit */
-  verify_property_4(this->root);
-  verify_property_5(this->root);
-}
-#endif
 
 /************** External interface ***************/
 
