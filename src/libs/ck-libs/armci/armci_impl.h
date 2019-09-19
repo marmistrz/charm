@@ -243,7 +243,7 @@ class ArmciVirtualProcessor : public TCharmClient1D {
     return CmiIsomallocContextMalloc(CmiIsomallocGetThreadContext(thread->getThread()), bytes);
   }
   void BlockFree(void * ptr) {
-    CmiIsomallocContextFree(CmiIsomallocGetThreadContext(thread->getThread()), bytes);
+    CmiIsomallocContextFree(CmiIsomallocGetThreadContext(thread->getThread()), ptr);
   }
   void getAddresses(AddressMsg *msg);
 
