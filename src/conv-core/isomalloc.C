@@ -2213,7 +2213,7 @@ CmiIsomallocContext * CmiIsomallocContextCreate(int myunit, int numunits)
 {
   uint8_t * start = get_space_partition(isomallocStart, isomallocEnd, myunit, numunits);
   uint8_t * end = get_space_partition(isomallocStart, isomallocEnd, myunit+1, numunits);
-  auto ctx = new CmiIsomallocContext{start, end};
+  auto ctx = new CmiIsomallocContext{CMIALIGN(start, pagesize), CMIALIGN(end - (pagesize-1), pagesize)};
 
   return ctx;
 }
