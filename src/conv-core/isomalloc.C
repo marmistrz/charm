@@ -1498,18 +1498,18 @@ struct CmiIsomallocContext
 
 #ifdef VERIFY_RBTREE
   private:
-    void verify_property_1(Node * n)
+    static void verify_property_1(Node * n)
     {
       CmiAssert(node_color(n) == RED || node_color(n) == BLACK);
       if (n == nullptr) return;
       verify_property_1(n->left());
       verify_property_1(n->right());
     }
-    void verify_property_2(Node * root)
+    static void verify_property_2(Node * root)
     {
       CmiAssert(node_color(root) == BLACK);
     }
-    void verify_property_4(Node * n)
+    static void verify_property_4(Node * n)
     {
       if (node_color(n) == RED)
       {
@@ -1521,7 +1521,7 @@ struct CmiIsomallocContext
       verify_property_4(n->left());
       verify_property_4(n->right());
     }
-    void verify_property_5_helper(Node * n, int black_count, int * path_black_count)
+    static void verify_property_5_helper(Node * n, int black_count, int * path_black_count)
     {
       if (node_color(n) == BLACK)
       {
@@ -1542,7 +1542,7 @@ struct CmiIsomallocContext
       verify_property_5_helper(n->left(), black_count, path_black_count);
       verify_property_5_helper(n->right(), black_count, path_black_count);
     }
-    void verify_property_5(Node * root)
+    static void verify_property_5(Node * root)
     {
       int black_count_path = -1;
       verify_property_5_helper(root, 0, &black_count_path);
