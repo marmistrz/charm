@@ -405,7 +405,7 @@ size_t CtgGetSize()
 }
 
 /** Copy the current globals into this new set */
-CtgGlobals CtgCreate(CthThread tid, void * buffer) {
+CtgGlobals CtgCreate(void * buffer) {
 	CtgGlobalStruct g = { buffer };
 	_ctgList->read(buffer);
 	return g;
