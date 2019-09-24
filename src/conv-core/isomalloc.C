@@ -33,7 +33,7 @@ Substantially rewritten by Evan Ramos in 2019.
 #define DEBUG_PRINT(...)
 #endif
 
-#define ISOMEMPOOL_DEBUG 1
+#define ISOMEMPOOL_DEBUG 0
 
 #if ISOMEMPOOL_DEBUG
 #define IMP_DBG(...) CmiPrintf(__VA_ARGS__)
