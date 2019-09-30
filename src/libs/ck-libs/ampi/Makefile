@@ -123,9 +123,28 @@ headers: $(HEADERS)
 	cp ampiCC $(CDIR)/bin/ampicc
 	cp ampiCC $(CDIR)/bin/ampiCC
 	cp ampiCC $(CDIR)/bin/ampicxx
+	cp ampiCC $(CDIR)/bin/ampic++
 	cp ampif77 $(CDIR)/bin/ampif77
 	cp ampif90 $(CDIR)/bin/ampif90
+	cp ampif90 $(CDIR)/bin/ampifort
 	cp ampirun $(CDIR)/bin/ampirun
+	cp ampiCC $(CDIR)/bin/mpicc.ampi
+	cp ampiCC $(CDIR)/bin/mpiCC.ampi
+	cp ampiCC $(CDIR)/bin/mpicxx.ampi
+	cp ampiCC $(CDIR)/bin/mpic++.ampi
+	cp ampif77 $(CDIR)/bin/mpif77.ampi
+	cp ampif90 $(CDIR)/bin/mpif90.ampi
+	cp ampif90 $(CDIR)/bin/mpifort.ampi
+	cp ampirun $(CDIR)/bin/mpirun.ampi
+	mkdir -p $(CDIR)/bin/ampi/
+	cp pathstub.sh $(CDIR)/bin/ampi/mpicc
+	cp pathstub.sh $(CDIR)/bin/ampi/mpiCC
+	cp pathstub.sh $(CDIR)/bin/ampi/mpicxx
+	cp pathstub.sh $(CDIR)/bin/ampi/mpic++
+	cp pathstub.sh $(CDIR)/bin/ampi/mpif77
+	cp pathstub.sh $(CDIR)/bin/ampi/mpif90
+	cp pathstub.sh $(CDIR)/bin/ampi/mpifort
+	cp pathstub.sh $(CDIR)/bin/ampi/mpirun
 	cp nm_globals.sh $(CDIR)/bin/nm_globals.sh
 	touch headers
 
